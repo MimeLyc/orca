@@ -141,6 +141,37 @@ Settings are grouped into panes. Everything here is searchable with `Cmd-,` then
 - **Send Review Notes to Agent** ships unbound; assign it here to open the send-notes menu for the active worktree's diff notes without using the mouse.
 - **Delete workspace** defaults to `Cmd+Shift+Backspace` on macOS and `Ctrl+Shift+Backspace` on Windows / Linux. Hover the sidebar workspace you mean to delete; Orca still asks for confirmation.
 
+### Terminal copy mode
+
+Enter **Copy Mode** with `Cmd+Shift+X` on macOS or `Ctrl+Shift+X` on Windows/Linux, or search for **Enter Copy Mode** in the command palette. Remap the entry action under **Shortcuts**.
+
+Copy mode freezes the active terminal's text and retained scrollback while the program continues running. Move the separate cursor with `h` / `j` / `k` / `l` or the arrow keys. Press `v` to start or cancel a character selection, then `y` to copy it and return to live output. Press `Esc` or `q` to exit without copying. Inline images are not copied.
+
+For finer control, open the keybindings file from **Shortcuts** and add a root `copyMode` section:
+
+```json
+{
+  "version": 1,
+  "keybindings": {
+    "terminal.enterCopyMode": ["Mod+Shift+X"]
+  },
+  "copyMode": {
+    "exitOnCopy": false,
+    "bindings": {
+      "left": ["h", "ArrowLeft"],
+      "down": ["j", "ArrowDown"],
+      "up": ["k", "ArrowUp"],
+      "right": ["l", "ArrowRight"],
+      "toggleSelection": ["v"],
+      "copy": ["y"],
+      "exit": ["Escape", "q"]
+    }
+  }
+}
+```
+
+`Mod` means Command on macOS and Control elsewhere. `exitOnCopy` defaults to `true`; set it to `false` to keep selecting after copying. Missing actions keep their default keys. An empty array disables an action, but at least one exit key is required. Invalid values or conflicting mode keys appear in the existing shortcut diagnostics and fall back to defaults. Reload the keybindings file after editing; changes apply the next time copy mode opens. These bindings are single shortcuts, not tmux-style prefix sequences.
+
 ## Repository
 
 - Per-repo base ref and hooks.
