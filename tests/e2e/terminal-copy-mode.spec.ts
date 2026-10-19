@@ -1,3 +1,4 @@
+import { PNG } from 'pngjs'
 import { test, expect } from './helpers/orca-app'
 import { ensureTerminalVisible, waitForActiveWorktree, waitForSessionReady } from './helpers/store'
 import { pressShortcut } from './helpers/shortcuts'
@@ -21,6 +22,8 @@ import {
   copiedModeText,
   copyCursorPosition,
   expectCopyCursorReady,
+  expectCopyCursorCell,
+  pressCopyMotion,
   expectHiddenCopyModeWindow,
   isolateCopyModeClipboard,
   seedCopyModeScreen,
@@ -51,7 +54,9 @@ test('copy mode freezes output, draws its cursor and copies without sending mode
   await expect(mode).toBeVisible()
   await expectCopyCursorReady(orcaPage)
   await expect(mode.locator('.xterm-accessibility-tree')).toContainText('COPY_MODE_ALPHA')
-  await expect(mode.locator('.xterm-rows')).toContainText('COPY_MODE_ALPHA')
+  await expect(
+    mode.locator('.xterm-screen canvas:not(.xterm-link-layer), .xterm-rows')
+  ).toHaveCount(1)
   await expect(mode.locator('.terminal-copy-mode-cursor')).toBeInViewport()
   const initial = await copyCursorPosition(orcaPage)
   await orcaPage.keyboard.press('l')
@@ -68,12 +73,29 @@ test('copy mode freezes output, draws its cursor and copies without sending mode
   await waitForTerminalOutput(orcaPage, 'COPY_MODE_LIVE_OUTPUT')
   await expect(mode.locator('.xterm-accessibility-tree')).not.toContainText('COPY_MODE_LIVE_OUTPUT')
   await clearTerminalPtyWriteLog(electronApp)
+  const bounds = await mode.locator('.xterm-screen').boundingBox()
+  const cell = await mode.locator('.terminal-copy-mode-cursor').evaluate((element) => ({
+    width: Number.parseFloat(element.style.width),
+    height: Number.parseFloat(element.style.height)
+  }))
+  if (!bounds) {
+    throw new Error('No copy-mode screen for selection paint')
+  }
+  const clip = {
+    x: bounds.x + cell.width * 1.5,
+    y: bounds.y + cell.height - 1,
+    width: 1,
+    height: 1
+  }
+  const unselected = PNG.sync.read(await orcaPage.screenshot({ clip })).data
   await orcaPage.keyboard.press('v')
   await orcaPage.keyboard.press('l')
   await orcaPage.keyboard.press('l')
   await orcaPage.keyboard.press('l')
   await expect(mode.getByRole('status')).toHaveText('Copy mode · Selecting')
-  await expect(mode.locator('.xterm-selection > div')).not.toHaveCount(0)
+  await expect
+    .poll(async () => PNG.sync.read(await orcaPage.screenshot({ clip })).data.equals(unselected))
+    .toBe(false)
   await expectHiddenCopyModeWindow(electronApp)
   await orcaPage.screenshot({ path: testInfo.outputPath('copy-mode-selection.png') })
   await orcaPage.keyboard.press('y')
@@ -188,6 +210,10 @@ test('alternate-screen snapshots exclude hidden history and clean up when switch
   const mode = orcaPage.locator('.terminal-copy-mode')
   await expect(mode.locator('.xterm-accessibility-tree')).toContainText('ALTERNATE_SCREEN')
   await expect(mode.locator('.xterm-accessibility-tree')).not.toContainText('HIDDEN_NORMAL_HISTORY')
+  await orcaPage.setViewportSize({ width: 1100, height: 720 })
+  await expectCopyCursorReady(orcaPage)
+  await expect(mode.locator('.xterm-accessibility-tree')).toContainText('ALTERNATE_SCREEN')
+  await expect(mode.locator('.xterm-accessibility-tree')).not.toContainText('HIDDEN_NORMAL_HISTORY')
   await orcaPage.keyboard.down('q')
   await expect(mode).toHaveCount(0)
   await orcaPage.keyboard.down('q')
@@ -199,4 +225,43 @@ test('alternate-screen snapshots exclude hidden history and clean up when switch
   await expect(mode).toHaveCount(0)
   await expect(orcaPage.locator(`[data-terminal-tab-id="${tabId}"] .pane .xterm`)).toHaveCount(2)
   await expectHiddenCopyModeWindow(electronApp)
+})
+
+test('older keybinding snapshots retain custom controls and receive missing Vim motion defaults', async ({
+  orcaPage,
+  electronApp
+}) => {
+  const snapshot = await orcaPage.evaluate(() => window.api.keybindings.get())
+  const olderSnapshot = {
+    ...snapshot,
+    copyMode: {
+      exitOnCopy: false,
+      bindings: {
+        left: ['H'],
+        right: ['L'],
+        up: ['W'],
+        down: ['J'],
+        toggleSelection: ['V'],
+        copy: ['Y'],
+        exit: ['Escape', 'Q']
+      }
+    }
+  }
+  await electronApp.evaluate(({ ipcMain }, value) => {
+    ipcMain.removeHandler('keybindings:get')
+    ipcMain.handle('keybindings:get', () => value)
+  }, olderSnapshot)
+  await orcaPage.evaluate(() => window.__store?.getState().fetchKeybindings())
+  await seedCopyModeScreen(orcaPage, 'first second\r\nnext')
+  await pressShortcut(orcaPage, 'x', { shift: true })
+  await expectCopyCursorReady(orcaPage)
+  await pressCopyMotion(orcaPage, 'j w')
+  await expectCopyCursorCell(orcaPage, 0, 0)
+  await pressCopyMotion(orcaPage, '$')
+  await expectCopyCursorCell(orcaPage, 0, 11)
+  await pressCopyMotion(orcaPage, '0 e e g e')
+  await expectCopyCursorCell(orcaPage, 0, 4)
+  await pressCopyMotion(orcaPage, '0 v $ y')
+  await expect.poll(() => copiedModeText(electronApp)).toBe('first second')
+  await expect(orcaPage.locator('.terminal-copy-mode')).toBeVisible()
 })

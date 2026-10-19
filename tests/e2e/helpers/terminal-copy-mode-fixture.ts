@@ -90,6 +90,20 @@ export async function expectCopyCursorReady(page: Page): Promise<void> {
     .toBeGreaterThan(0)
   await expect
     .poll(() =>
+      cursor.evaluate((element) => {
+        const viewport = element.closest('.terminal-copy-mode-viewport')
+        const screen = element.parentElement
+        return (
+          viewport &&
+          screen &&
+          screen.clientWidth <= viewport.clientWidth &&
+          screen.clientHeight <= viewport.clientHeight
+        )
+      })
+    )
+    .toBe(true)
+  await expect
+    .poll(() =>
       page
         .locator('.terminal-copy-mode .xterm-helper-textarea')
         .evaluate((element) => element.ownerDocument.activeElement === element)
@@ -103,6 +117,44 @@ export function copyCursorPosition(page: Page): Promise<{ x: number; y: number; 
     y: Number.parseFloat(element.style.top),
     width: Number.parseFloat(element.style.width)
   }))
+}
+
+export async function pressCopyMotion(page: Page, keys: string): Promise<void> {
+  for (const key of keys.split(' ')) {
+    await page.keyboard.press(/^[A-Z]$/.test(key) ? `Shift+${key}` : key)
+  }
+}
+
+export async function readCopyModeGridGeometry(page: Page) {
+  await expect(page.locator('.terminal-copy-mode .xterm-accessibility-tree')).toContainText(/[!-~]/)
+  return page.locator('.terminal-copy-mode').evaluate((root) => {
+    const screen = root.querySelector<HTMLElement>('.xterm-screen')
+    const rows = root.querySelector<HTMLElement>('.xterm-accessibility-tree')
+    const cursor = root.querySelector<HTMLElement>('.terminal-copy-mode-cursor')
+    const ascii = Array.from(rows?.querySelectorAll<HTMLElement>('[role="listitem"]') ?? []).find(
+      (row) => /^[\x20-\x7e]+$/.test(row.textContent ?? '')
+    )
+    if (!screen || !rows || !cursor || !ascii?.textContent) {
+      throw new Error('Copy-mode grid has no measurable ASCII cell')
+    }
+    const cellWidth = ascii.getBoundingClientRect().width / ascii.textContent.length
+    const rowCount = rows.childElementCount
+    const cellHeight = Number.parseFloat(ascii.style.height)
+    return {
+      cols: Math.round(screen.clientWidth / cellWidth),
+      rows: rowCount,
+      cursor: {
+        row: Math.round(Number.parseFloat(cursor.style.top) / cellHeight),
+        column: Math.round(Number.parseFloat(cursor.style.left) / cellWidth)
+      }
+    }
+  })
+}
+
+export async function expectCopyCursorCell(page: Page, row: number, column: number): Promise<void> {
+  await expect
+    .poll(async () => (await readCopyModeGridGeometry(page)).cursor)
+    .toEqual({ row, column })
 }
 
 export async function expectHiddenCopyModeWindow(app: ElectronApplication): Promise<void> {

@@ -1,50 +1,84 @@
 import type { Terminal } from '@xterm/xterm'
+import type { TerminalCopyModeMotion } from '../../../../shared/terminal-copy-mode-config'
+import {
+  createCopyModeBuffer,
+  type CopyModeBuffer,
+  type CopyModePosition,
+  type CopyModeTerminal
+} from './terminal-copy-mode-buffer'
+import { moveCopyModeWord } from './terminal-copy-mode-word-motion'
 
-export type CopyModePosition = { row: number; column: number }
+export type { CopyModePosition } from './terminal-copy-mode-buffer'
 export type CopyModeSelection = {
   cursor: CopyModePosition
   anchor: CopyModePosition | null
   preferredColumn: number
-}
-
-type CopyBuffer = Pick<Terminal, 'buffer' | 'cols'>
-
-function characterStart(terminal: CopyBuffer, row: number, column: number): number {
-  const line = terminal.buffer.active.getLine(row)
-  const clamped = Math.max(0, Math.min(terminal.cols - 1, column))
-  return clamped > 0 && line?.getCell(clamped)?.getWidth() === 0 ? clamped - 1 : clamped
+  buffer: CopyModeBuffer
 }
 
 export function createCopyModeSelection(
-  terminal: CopyBuffer,
+  terminal: CopyModeTerminal,
   position: CopyModePosition
 ): CopyModeSelection {
-  const row = Math.max(0, Math.min(terminal.buffer.active.length - 1, position.row))
-  const column = characterStart(terminal, row, position.column)
-  return { cursor: { row, column }, anchor: null, preferredColumn: column }
+  const buffer = createCopyModeBuffer(terminal)
+  const cursor = buffer.characterStart(position.row, position.column)
+  return { cursor, anchor: null, preferredColumn: buffer.logicalColumn(cursor), buffer }
 }
 
 export function moveCopyModeCursor(
-  terminal: CopyBuffer,
+  terminal: Terminal,
   state: CopyModeSelection,
-  direction: 'left' | 'down' | 'up' | 'right'
+  motion: TerminalCopyModeMotion
 ): void {
-  const { row, column } = state.cursor
-  if (direction === 'up' || direction === 'down') {
-    const nextRow = Math.max(
-      0,
-      Math.min(terminal.buffer.active.length - 1, row + (direction === 'up' ? -1 : 1))
-    )
-    state.cursor = {
-      row: nextRow,
-      column: characterStart(terminal, nextRow, state.preferredColumn)
+  const { buffer, cursor } = state
+  const { start, end } = buffer.lineBounds(cursor.row)
+  let next = cursor
+  if (motion === 'up' || motion === 'down') {
+    const row = motion === 'up' ? start - 1 : end + 1
+    if (row >= 0 && row <= buffer.lastRow) {
+      state.cursor = buffer.atLogicalColumn(row, state.preferredColumn)
     }
     return
   }
-  const width = Math.max(1, terminal.buffer.active.getLine(row)?.getCell(column)?.getWidth() ?? 1)
-  const nextColumn = characterStart(terminal, row, column + (direction === 'left' ? -1 : width))
-  state.cursor = { row, column: nextColumn }
-  state.preferredColumn = nextColumn
+  if (motion === 'left' || motion === 'right') {
+    const adjacent = motion === 'left' ? buffer.previous(cursor) : buffer.next(cursor)
+    if (adjacent && adjacent.row >= start && adjacent.row <= end) {
+      next = adjacent
+    }
+  } else if (motion === 'lineStart' || motion === 'firstNonBlank') {
+    next = { row: start, column: 0 }
+    if (motion === 'firstNonBlank') {
+      let following = buffer.next(next)
+      while (!buffer.text(next).trim() && following && following.row <= end) {
+        next = following
+        following = buffer.next(next)
+      }
+      if (!buffer.text(next).trim()) {
+        next = { row: start, column: 0 }
+      }
+    }
+  } else if (motion === 'lineEnd' || motion === 'lastNonBlank') {
+    next = buffer.characterStart(end, Math.max(0, buffer.rowLength(end) - 1))
+    if (motion === 'lastNonBlank') {
+      let previous = buffer.previous(next)
+      while (!buffer.text(next).trim() && previous && previous.row >= start) {
+        next = previous
+        previous = buffer.previous(next)
+      }
+    }
+  } else if (motion === 'halfPageUp' || motion === 'halfPageDown') {
+    const amount = Math.max(1, Math.floor(terminal.rows / 2)) * (motion === 'halfPageUp' ? -1 : 1)
+    const row = Math.max(0, Math.min(buffer.lastRow, cursor.row + amount))
+    next = buffer.characterStart(
+      row,
+      Math.min(cursor.column, Math.max(0, buffer.rowLength(row) - 1))
+    )
+    terminal.scrollLines(amount)
+  } else {
+    next = moveCopyModeWord(buffer, cursor, motion)
+  }
+  state.cursor = next
+  state.preferredColumn = buffer.logicalColumn(next)
 }
 
 export function renderCopyModeSelection(terminal: Terminal, state: CopyModeSelection): void {

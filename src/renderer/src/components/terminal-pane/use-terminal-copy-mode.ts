@@ -8,11 +8,12 @@ import {
   keybindingMatchesAction,
   type KeybindingActionId
 } from '../../../../shared/keybindings'
-import { DEFAULT_TERMINAL_COPY_MODE_CONFIG } from '../../../../shared/terminal-copy-mode-config'
+import { normalizeTerminalCopyModeConfig } from '../../../../shared/terminal-copy-mode-config'
 import { paneIsCoveredByNativeChat } from './native-chat-covered-pane'
 import { hasPendingTerminalImeComposition } from './terminal-ime-composition-route'
 import { createTerminalCopyModeView, type TerminalCopyModeView } from './terminal-copy-mode-view'
 import { registerTerminalCopyModeTarget } from './terminal-copy-mode-targets'
+import { installCopyModeMenuGuard } from './terminal-copy-mode-menu'
 import {
   claimCopyModeKey,
   consumeCopyModeEvent,
@@ -115,14 +116,19 @@ export function useTerminalCopyMode({
       }
       end()
       try {
-        const config =
-          useAppStore.getState().keybindingSnapshot?.copyMode ?? DEFAULT_TERMINAL_COPY_MODE_CONFIG
+        const config = normalizeTerminalCopyModeConfig(
+          useAppStore.getState().keybindingSnapshot?.copyMode,
+          platform
+        )
         const view = createTerminalCopyModeView(
           pane,
           config,
           platform,
           () => end(true),
-          () => !stopped && session?.pane.terminal === pane.terminal && !modalOpen()
+          () => !stopped && session?.pane.terminal === pane.terminal && !modalOpen(),
+          managerRef.current
+            ?.getRenderingDiagnostics()
+            .some((entry) => entry.paneId === pane.id && entry.hasWebgl) ?? false
         )
         session = { pane, view }
         // The palette closes before running an action, but its focus trap settles next frame.
@@ -143,6 +149,15 @@ export function useTerminalCopyMode({
     }
     const releaseKeyGuard = installCopyModeKeyGuard()
     const unregister = registerTerminalCopyModeTarget(tabId, { available, enter })
+    const releaseMenuGuard = installCopyModeMenuGuard(() => {
+      if (!session || modalOpen() || currentPane()?.terminal !== session.pane.terminal) {
+        return null
+      }
+      const target = document.activeElement
+      return session.view.contains(target) || session.pane.terminal.element?.contains(target)
+        ? session.view
+        : null
+    })
     const inScope = (target: EventTarget | null): boolean =>
       target instanceof Node && scope.contains(target)
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -242,6 +257,7 @@ export function useTerminalCopyMode({
       stopped = true
       unregister()
       releaseKeyGuard()
+      releaseMenuGuard()
       mutations.disconnect()
       if (focusFrame !== null) {
         cancelAnimationFrame(focusFrame)

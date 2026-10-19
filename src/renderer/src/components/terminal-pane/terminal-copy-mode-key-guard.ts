@@ -24,7 +24,15 @@ function clear(): void {
 }
 
 function onKeyDown(event: KeyboardEvent): void {
-  const mayRepeat = claimed.get(keyIdentity(event))
+  const identity = keyIdentity(event)
+  // macOS may omit a Command chord's keyup; a fresh press supersedes only that key.
+  if (!event.repeat) {
+    if (claimed.delete(identity) && claimed.size === 0) {
+      clear()
+    }
+    return
+  }
+  const mayRepeat = claimed.get(identity)
   if (mayRepeat && !mayRepeat()) {
     consumeCopyModeEvent(event)
   }

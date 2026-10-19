@@ -1,9 +1,22 @@
-import {
-  canonicalizeParsedKeybinding,
-  getKeybindingConflictIdentity,
-  parseKeybinding,
-  type KeybindingFileDiagnostic
-} from './keybindings'
+import type { KeybindingFileDiagnostic } from './keybindings'
+import { copyModeBindingsOverlap, normalizeCopyModeBinding } from './terminal-copy-mode-bindings'
+
+export const TERMINAL_COPY_MODE_VIM_MOTIONS = [
+  'lineStart',
+  'lineEnd',
+  'firstNonBlank',
+  'lastNonBlank',
+  'wordForward',
+  'wordBackward',
+  'wordEnd',
+  'previousWordEnd',
+  'bigWordForward',
+  'bigWordBackward',
+  'bigWordEnd',
+  'previousBigWordEnd',
+  'halfPageUp',
+  'halfPageDown'
+] as const
 
 export const TERMINAL_COPY_MODE_ACTIONS = [
   'left',
@@ -12,10 +25,15 @@ export const TERMINAL_COPY_MODE_ACTIONS = [
   'right',
   'toggleSelection',
   'copy',
-  'exit'
+  'exit',
+  ...TERMINAL_COPY_MODE_VIM_MOTIONS
 ] as const
 
 export type TerminalCopyModeAction = (typeof TERMINAL_COPY_MODE_ACTIONS)[number]
+export type TerminalCopyModeMotion = Exclude<
+  TerminalCopyModeAction,
+  'toggleSelection' | 'copy' | 'exit'
+>
 export type TerminalCopyModeConfig = {
   exitOnCopy: boolean
   bindings: Record<TerminalCopyModeAction, readonly string[]>
@@ -30,7 +48,21 @@ export const DEFAULT_TERMINAL_COPY_MODE_CONFIG: TerminalCopyModeConfig = {
     right: ['L', 'ArrowRight'],
     toggleSelection: ['V'],
     copy: ['Y'],
-    exit: ['Escape', 'Q']
+    exit: ['Escape', 'Q'],
+    lineStart: ['0'],
+    lineEnd: ['$'],
+    firstNonBlank: ['^'],
+    lastNonBlank: ['G _'],
+    wordForward: ['W'],
+    wordBackward: ['B'],
+    wordEnd: ['E'],
+    previousWordEnd: ['G E'],
+    bigWordForward: ['Shift+W'],
+    bigWordBackward: ['Shift+B'],
+    bigWordEnd: ['Shift+E'],
+    previousBigWordEnd: ['G Shift+E'],
+    halfPageUp: ['Ctrl+U'],
+    halfPageDown: ['Ctrl+D']
   }
 }
 
@@ -47,11 +79,10 @@ function normalizeBindings(value: unknown): string[] | null {
     if (typeof binding !== 'string') {
       return null
     }
-    const parsed = parseKeybinding(binding)
-    if (!parsed || parsed.doubleTapModifier || (parsed.mod && (parsed.meta || parsed.control))) {
+    const canonical = normalizeCopyModeBinding(binding)
+    if (!canonical) {
       return null
     }
-    const canonical = canonicalizeParsedKeybinding(parsed)
     if (!result.includes(canonical)) {
       result.push(canonical)
     }
@@ -105,6 +136,7 @@ export function normalizeTerminalCopyModeConfig(
       )
     }
   }
+  const explicit = new Set<TerminalCopyModeAction>()
   for (const action of TERMINAL_COPY_MODE_ACTIONS) {
     const raw = value.bindings[action]
     if (raw === undefined) {
@@ -114,26 +146,48 @@ export function normalizeTerminalCopyModeConfig(
     if (!normalized || (action === 'exit' && normalized.length === 0)) {
       report(
         `copyMode.bindings.${action}`,
-        `Invalid bindings for "${action}". Use an array of single shortcuts; exit needs at least one binding.`
+        `Invalid bindings for "${action}". Use an array of shortcuts or two-stroke sequences; exit needs at least one binding.`
       )
       continue
     }
     config.bindings[action] = normalized
+    explicit.add(action)
   }
-  const owners = new Map<string, TerminalCopyModeAction>()
+  // New defaults must not steal a pre-existing user control (for example WASD).
+  for (const action of TERMINAL_COPY_MODE_VIM_MOTIONS) {
+    if (explicit.has(action)) {
+      continue
+    }
+    config.bindings[action] = config.bindings[action].filter((binding) => {
+      const conflict = [...explicit].some((owner) =>
+        config.bindings[owner].some((other) => copyModeBindingsOverlap(binding, other, platform))
+      )
+      if (conflict) {
+        report(
+          `copyMode.bindings.${action}`,
+          `Default binding "${binding}" for "${action}" yields to a custom binding.`,
+          'warning'
+        )
+      }
+      return !conflict
+    })
+  }
+  const assigned: { action: TerminalCopyModeAction; binding: string }[] = []
   for (const action of TERMINAL_COPY_MODE_ACTIONS) {
     for (const binding of config.bindings[action]) {
-      const identity = getKeybindingConflictIdentity(binding, platform)
-      const previous = owners.get(identity)
-      if (previous && previous !== action) {
+      const previous = assigned.find(
+        (owner) =>
+          owner.action !== action && copyModeBindingsOverlap(binding, owner.binding, platform)
+      )
+      if (previous) {
         report(
           'copyMode.bindings',
-          `Copy-mode binding "${binding}" conflicts between "${previous}" and "${action}". Default bindings are active.`
+          `Copy-mode binding "${binding}" conflicts between "${previous.action}" and "${action}". Default bindings are active.`
         )
         config.bindings = { ...defaults.bindings }
         return config
       }
-      owners.set(identity, action)
+      assigned.push({ action, binding })
     }
   }
   return config
