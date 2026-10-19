@@ -80,6 +80,12 @@ export function copiedModeText(app: ElectronApplication): Promise<string | null>
   return app.evaluate(() => process.env.ORCA_E2E_COPY_MODE_TEXT ?? null)
 }
 
+export async function resetCopiedModeText(app: ElectronApplication): Promise<void> {
+  await app.evaluate(() => {
+    delete process.env.ORCA_E2E_COPY_MODE_TEXT
+  })
+}
+
 export async function expectCopyCursorReady(page: Page): Promise<void> {
   const cursor = page.locator('.terminal-copy-mode-cursor')
   await expect(cursor).toBeVisible()

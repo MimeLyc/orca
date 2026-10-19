@@ -145,7 +145,7 @@ Settings are grouped into panes. Everything here is searchable with `Cmd-,` then
 
 Enter **Copy Mode** with `Cmd+Shift+X` on macOS or `Ctrl+Shift+X` on Windows/Linux, or search for **Enter Copy Mode** in the command palette. Remap the entry action under **Shortcuts**.
 
-Copy mode freezes the active terminal's text and retained scrollback while the program continues running. Move the separate cursor with `h` / `j` / `k` / `l` or the arrow keys. Press `v` to start or cancel a character selection, then `y` to copy it and return to live output. Press `Esc` or `q` to exit without copying. Inline images are not copied. On entry, the copy view keeps the terminal's font settings and rendering backend. The frozen text rewraps to fit the copy-mode pane when it is resized; the cursor and selection stay on the same text.
+Copy mode freezes the active terminal's text and retained scrollback while the program continues running. Move the separate cursor with `h` / `j` / `k` / `l` or the arrow keys. Press `v` to start or cancel a character selection, then `y` to copy it. Successful copies return to live output by default; set `exitOnCopy` to `false` to remain in copy mode. Press `Esc` or `q` to exit without copying. Inline images are not copied. On entry, the copy view keeps the terminal's font settings and rendering backend. The frozen text rewraps to fit the copy-mode pane when it is resized; the cursor and selection stay on the same text.
 
 The basic Vim motions are available in both directions, including while selecting:
 

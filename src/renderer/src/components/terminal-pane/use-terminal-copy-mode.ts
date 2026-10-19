@@ -82,6 +82,7 @@ export function useTerminalCopyMode({
       return !stopped && pane !== null && !hasPendingTerminalImeComposition(pane.terminal.element)
     }
     const end = (restoreFocus = false): void => {
+      mutations.disconnect()
       if (focusFrame !== null) {
         cancelAnimationFrame(focusFrame)
         focusFrame = null
@@ -126,11 +127,15 @@ export function useTerminalCopyMode({
           platform,
           () => end(true),
           () => !stopped && session?.pane.terminal === pane.terminal && !modalOpen(),
-          managerRef.current
-            ?.getRenderingDiagnostics()
-            .some((entry) => entry.paneId === pane.id && entry.hasWebgl) ?? false
+          managerRef.current?.hasWebglRenderer(pane.id) ?? false
         )
         session = { pane, view }
+        mutations.observe(scope, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ['class', 'style']
+        })
         // The palette closes before running an action, but its focus trap settles next frame.
         focusFrame = requestAnimationFrame(() => {
           focusFrame = null
@@ -233,12 +238,6 @@ export function useTerminalCopyMode({
       }
     }
     const mutations = new MutationObserver(validate)
-    mutations.observe(scope, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['class', 'style']
-    })
     const inputEvents = [
       'beforeinput',
       'input',
@@ -258,7 +257,6 @@ export function useTerminalCopyMode({
       unregister()
       releaseKeyGuard()
       releaseMenuGuard()
-      mutations.disconnect()
       if (focusFrame !== null) {
         cancelAnimationFrame(focusFrame)
       }

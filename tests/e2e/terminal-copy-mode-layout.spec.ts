@@ -9,6 +9,7 @@ import {
   expectCopyCursorReady,
   isolateCopyModeClipboard,
   pressCopyMotion,
+  resetCopiedModeText,
   seedCopyModeScreen,
   startCopyModeTerminalProbe
 } from './helpers/terminal-copy-mode-fixture'
@@ -92,11 +93,15 @@ for (const { theme, classic } of [
     await orcaPage.screenshot({ path: testInfo.outputPath('copy-mode-layout-wide.png') })
     await orcaPage.setViewportSize({ width: 1100, height: 720 })
     await expectFittedSnapshot(orcaPage)
+    await resetCopiedModeText(electronApp)
+    expect(await copiedModeText(electronApp)).toBeNull()
     await pressCopyMotion(orcaPage, 'y')
     await expect.poll(() => copiedModeText(electronApp)).toBe('中e\u0301Z')
     await orcaPage.screenshot({ path: testInfo.outputPath('copy-mode-layout-narrow.png') })
     await orcaPage.setViewportSize(original)
     await expectFittedSnapshot(orcaPage)
+    await resetCopiedModeText(electronApp)
+    expect(await copiedModeText(electronApp)).toBeNull()
     await pressCopyMotion(orcaPage, 'y')
     await expect.poll(() => copiedModeText(electronApp)).toBe('中e\u0301Z')
   })
