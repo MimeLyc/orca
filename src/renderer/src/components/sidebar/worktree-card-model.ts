@@ -1,4 +1,5 @@
 import type React from 'react'
+import type { SelectionGesture } from '@/lib/list-multi-selection'
 
 import type { Repo } from '../../../../shared/repo-types'
 import type { WorkspaceStatus, Worktree } from '../../../../shared/worktree/types'
@@ -40,7 +41,7 @@ export type WorktreeCardProps = {
   onActivate?: () => void
   onWorktreeCardClick?: () => void
   onImmediateActivate?: (worktreeId: string, rowKey: string | undefined) => void
-  onSelectionGesture?: (event: React.MouseEvent<HTMLElement>, worktree: Worktree) => boolean
+  onSelectionGesture?: (event: SelectionGesture, worktree: Worktree) => boolean
   onContextMenuSelect?: (
     event: React.MouseEvent<HTMLElement>,
     worktree: Worktree
