@@ -76,6 +76,7 @@ export function useTabRenameReturnFocus({
       } else if (leafId) {
         focusTerminalTabSurface(tabId, leafId, {
           onlyIfFocusUnclaimed: true,
+          oneShotChatComposerFocus: true,
           shouldFocus: canRestoreFocus
         })
       }

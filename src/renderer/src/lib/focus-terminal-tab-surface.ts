@@ -17,6 +17,8 @@ let pendingFocusFrameIds: number[] = []
 
 type FocusTerminalTabSurfaceOptions = {
   onlyIfFocusUnclaimed?: boolean
+  /** Rename return only: claim an idle chat composer now instead of queueing a replayable reveal request. */
+  oneShotChatComposerFocus?: boolean
   shouldFocus?: () => boolean
   onImeRefocusSkipped?: (activeElement: Element | null) => void
   refreshImeContext?: boolean
@@ -80,7 +82,7 @@ export function focusTerminalTabSurface(
       if (tabElement?.getAttribute('data-terminal-chat-view') === 'true') {
         // The chat over this terminal takes the focus in its composer instead.
         if (!options.onlyIfFocusUnclaimed || document.activeElement === document.body) {
-          if (options.onlyIfFocusUnclaimed) {
+          if (options.oneShotChatComposerFocus) {
             requestNativeChatComposerFocus(tabId, { onlyIfFocusUnclaimed: true })
             return
           }
