@@ -20,16 +20,8 @@ import type {
   RuntimeSkillCommandSurface,
   RuntimeSkillCommandHost
 } from './runtime-skill-command-contract'
-import type {
-  SkillCloudOptions,
-  SkillCloudPublishRequest,
-  SkillCloudService
-} from './runtime-skill-types'
-export type {
-  RuntimeSkillCommandSurface,
-  RuntimeSkillCommandHost
-} from './runtime-skill-command-contract'
-export { installRuntimeSkillCommandSurface } from './runtime-skill-command-contract'
+import type { SkillCloudOptions, SkillCloudPublishRequest } from '../../shared/skill-cloud-contract'
+import type { SkillCloudService } from '../skills/skill-cloud-service'
 
 export class RuntimeSkillCommands
   extends RuntimeSkillInstallQueries
@@ -195,9 +187,6 @@ export class RuntimeSkillCommands
   }
   revokeSkillShare(shareId: string, options: SkillCloudOptions) {
     return this.requireCloud().revokeShare(shareId, options)
-  }
-  deleteSkillPackageVersion(packageId: string, versionId: string, options: SkillCloudOptions) {
-    return this.requireCloud().deleteVersion(packageId, versionId, options)
   }
   deleteSkillPackage(packageId: string, options: SkillCloudOptions) {
     return this.requireCloud().deletePackage(packageId, options)

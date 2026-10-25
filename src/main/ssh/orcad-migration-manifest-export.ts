@@ -10,13 +10,14 @@ import {
   MAX_ORCAD_MIGRATION_MANIFEST_BYTES,
   ORCAD_MIGRATION_MANIFEST_VERSION,
   parseOrcadMigrationManifest
-} from '../../shared/orcad-migration-manifest-validation'
+} from '../../shared/orcad-migration/orcad-migration-manifest-validation'
 import type {
   OrcadMigrationCatalogPayload,
   OrcadMigrationDormantStatePayload,
   OrcadMigrationManifest
-} from '../../shared/orcad-migration-manifest'
+} from '../../shared/orcad-migration/orcad-migration-manifest'
 import type { SshTarget } from '../../shared/ssh-types'
+import { REMOTE_RUNTIME_MAX_INBOUND_REQUEST_JSON_BYTES } from '../../shared/remote-runtime-memory-limits'
 import type { Store } from '../persistence'
 import { collectOrcadMigrationSourceCatalog } from '../persistence/migrating-orcad-catalog/orcad-source-catalog'
 import { computeOrcadMigrationManifestSha256 } from '../orcad/orcad-migration-manifest-digest'
@@ -90,10 +91,13 @@ export function createOrcadMigrationManifest(
       : {})
   }
   try {
-    return parseOrcadMigrationManifest({
-      ...unsigned,
-      manifestSha256: computeOrcadMigrationManifestSha256(unsigned)
+    // Sign what the journal and the host read back: the parsed form (the parser keeps only the fields
+    // it knows) of the JSON (a value with toJSON serializes differently), never the live objects.
+    const { manifestSha256: _unsigned, ...normalized } = parseOrcadMigrationManifest({
+      ...JSON.parse(JSON.stringify(unsigned)),
+      manifestSha256: UNSIGNED_DIGEST
     })
+    return { ...normalized, manifestSha256: computeOrcadMigrationManifestSha256(normalized) }
   } catch (error) {
     if (error instanceof Error && error.message === ORCAD_MIGRATION_MANIFEST_TOO_LARGE) {
       throw new Error(describeOversizedOrcadMigrationPayload(payload))
@@ -103,6 +107,37 @@ export function createOrcadMigrationManifest(
 }
 
 const ORCAD_MIGRATION_MANIFEST_TOO_LARGE = 'orcad_migration_manifest_too_large'
+const UNSIGNED_DIGEST = '0'.repeat(64)
+
+// Request id, device token, method name and JSON framing around the params.
+const REQUEST_ENVELOPE_RESERVE_BYTES = 1024
+/** The largest catalog-request params that still fit the host's sealed inbound frame. */
+const ORCAD_MIGRATION_REQUEST_PARAMS_BUDGET_BYTES =
+  REMOTE_RUNTIME_MAX_INBOUND_REQUEST_JSON_BYTES - REQUEST_ENVELOPE_RESERVE_BYTES
+
+/**
+ * Throws the user-facing refusal when a catalog request would overflow the host's sealed frame;
+ * the host would answer by closing the socket. Every request carries the whole manifest, so a
+ * fence must not be taken on one that fails this: its stage, state and abort would all refuse.
+ */
+export function assertOrcadMigrationRequestFits(params: {
+  manifest: OrcadMigrationManifest
+}): void {
+  if (!orcadMigrationRequestFits(params)) {
+    throw new Error(
+      describeOversizedOrcadMigrationPayload(
+        params.manifest.payload,
+        ORCAD_MIGRATION_REQUEST_PARAMS_BUDGET_BYTES
+      )
+    )
+  }
+}
+
+export function orcadMigrationRequestFits(params: { manifest: OrcadMigrationManifest }): boolean {
+  return (
+    Buffer.byteLength(JSON.stringify(params), 'utf8') <= ORCAD_MIGRATION_REQUEST_PARAMS_BUDGET_BYTES
+  )
+}
 
 /** The bare code told users nothing (#30126): name the largest parts and what to trim. */
 export function describeOversizedOrcadMigrationPayload(

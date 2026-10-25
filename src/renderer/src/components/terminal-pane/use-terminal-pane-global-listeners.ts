@@ -157,8 +157,7 @@ export function useTerminalPaneGlobalListeners(controller: TerminalPaneCloseCont
         cleanup()
       }
     }
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- Preserve the pre-split dependency contract.
-  }, [isActive, isVisible])
+  }, [isActive, isVisible, managerRef, paneTransportsRef])
 
   useEffect(() => {
     const container = containerRef.current
@@ -247,6 +246,5 @@ export function useTerminalPaneGlobalListeners(controller: TerminalPaneCloseCont
         syncFocused(false)
       }
     }
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- Preserve the pre-split dependency contract.
-  }, [])
+  }, [containerRef])
 }

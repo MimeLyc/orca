@@ -95,8 +95,12 @@ vi.mock('../../../../shared/agent-title-decoration', () => ({
 }))
 
 vi.mock('../../store', () => ({
-  useAppStore: (selector: (state: { unreadTerminalTabs: Record<string, boolean> }) => unknown) =>
-    selector({ unreadTerminalTabs: {} })
+  useAppStore: (
+    selector: (state: {
+      unreadTerminalTabs: Record<string, boolean>
+      agentStatusByPaneKey: Record<string, never>
+    }) => unknown
+  ) => selector({ unreadTerminalTabs: {}, agentStatusByPaneKey: {} })
 }))
 
 vi.mock('@/store', () => ({
@@ -105,8 +109,23 @@ vi.mock('@/store', () => ({
       openMarkdownPreview: () => void
       settings: null
       unreadTerminalTabs: Record<string, boolean>
+      agentStatusByPaneKey: Record<string, never>
+      browserPagesByWorkspace: Record<string, never>
+      browserAudiblePageIds: Record<string, never>
+      browserAudioMutedTabIds: Record<string, never>
+      setBrowserTabAudioMuted: () => void
     }) => unknown
-  ) => selector({ openMarkdownPreview: vi.fn(), settings: null, unreadTerminalTabs: {} })
+  ) =>
+    selector({
+      openMarkdownPreview: vi.fn(),
+      settings: null,
+      unreadTerminalTabs: {},
+      agentStatusByPaneKey: {},
+      browserPagesByWorkspace: {},
+      browserAudiblePageIds: {},
+      browserAudioMutedTabIds: {},
+      setBrowserTabAudioMuted: vi.fn()
+    })
 }))
 
 vi.mock('@/store/selectors', () => ({
