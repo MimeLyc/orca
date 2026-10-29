@@ -118,6 +118,63 @@ test('menu copy and select all use the frozen selection instead of hidden live t
   await expectHiddenCopyModeWindow(electronApp)
 })
 
+for (const remapped of [false, true]) {
+  test(`${remapped ? 'Ctrl+Shift' : 'default'} copy and select-all shortcuts use frozen text without a menu event`, async ({
+    orcaPage,
+    electronApp
+  }) => {
+    await electronApp.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('clipboard:readText')
+      ipcMain.handle('clipboard:readText', () => 'SHORTCUT_PASTE_PAYLOAD')
+    })
+    const isMac = await orcaPage.evaluate(() => navigator.userAgent.includes('Mac'))
+    const modifier = remapped || !isMac ? 'Control+Shift' : 'Meta'
+    await configureCopyMode(orcaPage, {
+      copyMode: { exitOnCopy: false },
+      ...(remapped
+        ? {
+            keybindings: {
+              'terminal.copySelection': ['Ctrl+Shift+C'],
+              'terminal.selectAll': ['Ctrl+Shift+A'],
+              'terminal.paste': ['Ctrl+Shift+V']
+            }
+          }
+        : {})
+    })
+    await pressShortcut(orcaPage, 'x', { shift: true })
+    await expectCopyCursorReady(orcaPage)
+    const tabId = await resolveActiveTabId(orcaPage)
+    await orcaPage.evaluate(async (tabId) => {
+      const pane = tabId ? window.__paneManagers?.get(tabId)?.getActivePane() : null
+      if (!pane) {
+        throw new Error('No live terminal')
+      }
+      await new Promise<void>((resolve) =>
+        pane.terminal.write('\x1b[2J\x1b[3J\x1b[HHIDDEN_LIVE', resolve)
+      )
+      pane.terminal.select(0, 0, 11)
+    }, tabId)
+    await orcaPage.keyboard.press('v')
+    await orcaPage.keyboard.press('l')
+    await orcaPage.keyboard.press('l')
+    await orcaPage.keyboard.press(`${modifier}+c`)
+    await expect.poll(() => copiedModeText(electronApp)).toBe('FRO')
+    await orcaPage.keyboard.press(`${modifier}+a`)
+    await orcaPage.keyboard.press(`${modifier}+c`)
+    await expect
+      .poll(async () => (await copiedModeText(electronApp))?.trim())
+      .toBe('FROZEN_ALPHA\nsecond line')
+    await orcaPage.keyboard.press(`${modifier}+v`)
+    await expect(orcaPage.locator('.terminal-copy-mode [role="status"]')).toHaveText(
+      'Copy mode · Selecting'
+    )
+    await orcaPage.keyboard.press('q')
+    await expect(orcaPage.locator('.terminal-copy-mode')).toHaveCount(0)
+    expect(await readTerminalPtyWrites(electronApp)).toEqual([])
+    await expectHiddenCopyModeWindow(electronApp)
+  })
+}
+
 test('copy mode does not claim menu actions from a focused palette textbox', async ({
   orcaPage,
   electronApp

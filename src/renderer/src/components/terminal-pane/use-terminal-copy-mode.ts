@@ -21,6 +21,11 @@ import {
 } from './terminal-copy-mode-key-guard'
 import { markTerminalFollowOutput } from '@/lib/pane-manager/terminal-scroll-intent'
 
+const TERMINAL_SELECTION_ACTIONS = [
+  { id: 'terminal.selectAll', action: 'select-all' },
+  { id: 'terminal.copySelection', action: 'copy' }
+] as const
+
 const PANE_NAVIGATION_ACTIONS = new Set<KeybindingActionId>([
   'terminal.focusNextPane',
   'terminal.focusPreviousPane',
@@ -209,6 +214,17 @@ export function useTerminalCopyMode({
       if (event.isComposing || owner.view.handleKeyDown(event)) {
         claimCopyModeKey(event, () => session === owner)
         consumeCopyModeEvent(event)
+        return
+      }
+      const selectionAction = TERMINAL_SELECTION_ACTIONS.find(({ id }) =>
+        keybindingMatchesAction(id, event, platform, state.keybindings, options)
+      )
+      if (selectionAction) {
+        claimCopyModeKey(event, () => session === owner)
+        consumeCopyModeEvent(event)
+        if (!event.repeat) {
+          owner.view.handleMenuSelectionAction(selectionAction.action)
+        }
         return
       }
       if (
