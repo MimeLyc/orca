@@ -53,6 +53,7 @@ export function useTerminalPaneGlobalListeners(controller: TerminalPaneCloseCont
     settings,
     settingsRef,
     shouldMeasureHiddenStartup,
+    warmRendererWhileHidden,
     tabId,
     toggleExpandPane,
     worktreeId
@@ -98,6 +99,7 @@ export function useTerminalPaneGlobalListeners(controller: TerminalPaneCloseCont
     isChatViewMode: effectiveChatViewMode,
     isWorktreeActive,
     isSyncFitEnabled: isRendererVisible || shouldMeasureHiddenStartup,
+    warmRendererWhileHidden: warmRendererWhileHidden === true,
     paneCount,
     managerRef,
     containerRef,
